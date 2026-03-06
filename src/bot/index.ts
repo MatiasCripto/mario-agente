@@ -10,10 +10,18 @@ bot.use(async (ctx, next) => {
     await next();
 });
 
+// Comando de emergencia para ver si el bot está VIVO (antes de cualquier seguridad)
+bot.command('test', async (ctx) => {
+    console.log('[Test] Recibido comando /test');
+    await ctx.reply('🚀 ¡MARIO ESTÁ VIVO Y CONECTADO!');
+});
+
 // Proteger todas las rutas con el whitelist
 bot.use(authMiddleware);
 
 setupHandlers(bot);
+
+console.log('🏁 Configuración de manejadores completada.');
 
 bot.catch((err) => {
     console.error('❌ [Telegram Bot Error] Error en grammy:', err);
