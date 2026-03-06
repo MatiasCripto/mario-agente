@@ -4,13 +4,28 @@ import { bot } from './bot/index.js';
 import './db/index.js';
 import { connectToMcpServer } from './mcp/index.js';
 
-// FORZAR IPv4: Esto soluciona el "Network request failed" en muchos servidores nube
+// FORZAR IPv4 Y DNS PERSONALIZADO: Esto soluciona el "ENOTFOUND" en Hugging Face
+try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+    console.log('📡 Usando DNS externos (Google/Cloudflare) para evitar bloqueos...');
+} catch (e) {
+    console.warn('⚠️ No se pudieron setear DNS personalizados.');
+}
+
 if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
 }
 
 async function bootstrap() {
     console.log('🚀 Iniciando Mario...');
+
+    // Test rápido de internet general
+    try {
+        const testRes = await fetch('https://www.google.com', { signal: AbortSignal.timeout(5000) });
+        console.log(`🌍 Test de internet: ${testRes.ok ? 'EXITOSO (Google)' : 'FALLIDO'}`);
+    } catch (e: any) {
+        console.error('❌ INTERNET CAÍDO:', e.message);
+    }
 
     // Debug de variables
     const token = process.env.TELEGRAM_BOT_TOKEN || '';
