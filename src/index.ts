@@ -4,13 +4,17 @@ import { bot } from './bot/index.js';
 import './db/index.js';
 import { connectToMcpServer } from './mcp/index.js';
 
-// FORZAR IPv4 Y DNS PERSONALIZADO: Esto soluciona el "ENOTFOUND" en Hugging Face
-try {
-    dns.setServers(['8.8.8.8', '1.1.1.1']);
-    console.log('📡 Usando DNS externos (Google/Cloudflare) para evitar bloqueos...');
-} catch (e) {
-    console.warn('⚠️ No se pudieron setear DNS personalizados.');
-}
+// HACK SUPREMO: Bypass de DNS para Telegram
+// Si el sistema no encuentra api.telegram.org, le damos la dirección IP a mano
+const originalLookup = dns.lookup;
+// @ts-ignore
+dns.lookup = (hostname: string, options: any, callback: any) => {
+    if (hostname === 'api.telegram.org') {
+        console.log('🔮 Bypass de DNS activado para Telegram...');
+        return originalLookup('149.154.167.220', options, callback);
+    }
+    return originalLookup(hostname, options, callback);
+};
 
 if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
