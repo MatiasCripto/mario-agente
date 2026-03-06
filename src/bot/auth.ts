@@ -4,10 +4,13 @@ import { env } from '../config/env.js';
 export async function authMiddleware(ctx: Context, next: NextFunction) {
     if (!ctx.from) return;
 
-    if (env.ALLOWED_USERS.includes(ctx.from.id)) {
+    const userId = ctx.from.id;
+    console.log(`[Auth] Verificando usuario ${userId}. Lista permitida: ${env.ALLOWED_USERS.join(', ')}`);
+
+    if (env.ALLOWED_USERS.includes(userId)) {
         await next();
     } else {
-        console.warn(`[Auth] Intento de acceso bloqueado del usuario: ${ctx.from.id} (@${ctx.from.username || 'sin_usuario'})`);
-        // Para máxima seguridad, ignoramos silenciosamente a usuarios no autorizados
+        console.warn(`[Auth] BLOQUEADO: ${userId} no está en la lista.`);
+        await ctx.reply(`Che, perdón pero tu ID (${userId}) no está en mi lista de permitidos. Avisale al dueño.`);
     }
 }
