@@ -1,97 +1,71 @@
 import fs from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
-import WebSocket from 'ws';
 
-const VOICE = 'es-AR-TomasNeural'; // Masculina, argentina, neural
-
-function getEdgeTTSUrl(): string {
-    const trustedClientToken = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-    const wsUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${trustedClientToken}&ConnectionId=${randomUUID().replace(/-/g, '')}`;
-    return wsUrl;
-}
-
-function buildSSML(text: string): string {
-    return `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='es-AR'>
-        <voice name='${VOICE}'>
-            <prosody rate='+0%' pitch='+0Hz'>${text.replace(/[<>&'"]/g, ' ')}</prosody>
-        </voice>
-    </speak>`;
-}
-
-function buildConfigMessage(): string {
-    return `X-Timestamp:${new Date().toISOString()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
-}
-
-function buildSSMLMessage(requestId: string, ssml: string): string {
-    return `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toISOString()}Z\r\nPath:ssml\r\n\r\n${ssml}`;
-}
-
+/**
+ * Genera audio usando Google Translate TTS (gratuito, funciona en Render).
+ * Limita a 200 caracteres para no superar el límite de la API.
+ */
 export async function textToSpeech(text: string, sessionId: string): Promise<string | null> {
-    console.log(`[TTS] Generando voz (Microsoft ${VOICE}) para sesión ${sessionId}...`);
+    console.log(`[TTS] Generando audio (Google) para sesión ${sessionId}...`);
 
-    return new Promise((resolve) => {
-        const requestId = randomUUID().replace(/-/g, '');
-        const audioChunks: Buffer[] = [];
-        let timeout: NodeJS.Timeout;
+    try {
+        // Limitar el texto a ~200 chars para respetar límite de Google TTS
+        const snippedText = smartTruncate(text, 200);
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(snippedText)}&tl=es&client=tw-ob&ttsspeed=0.9`;
 
-        try {
-            const ws = new WebSocket(getEdgeTTSUrl(), {
-                headers: {
-                    'Pragma': 'no-cache',
-                    'Cache-Control': 'no-cache',
-                    'User-Agent': 'Mozilla/5.0',
-                    'Origin': 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
-                }
-            });
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://translate.google.com/',
+            }
+        });
 
-            timeout = setTimeout(() => {
-                console.error('[TTS] Timeout esperando respuesta de Microsoft.');
-                ws.close();
-                resolve(null);
-            }, 15000);
-
-            ws.on('open', () => {
-                ws.send(buildConfigMessage());
-                ws.send(buildSSMLMessage(requestId, buildSSML(text)));
-            });
-
-            ws.on('message', (data: Buffer | string) => {
-                if (Buffer.isBuffer(data)) {
-                    // Los mensajes binarios contienen audio después del header "Path:audio"
-                    const separator = Buffer.from('Path:audio\r\n\r\n');
-                    const idx = data.indexOf(separator);
-                    if (idx !== -1) {
-                        audioChunks.push(data.subarray(idx + separator.length));
-                    }
-                } else if (typeof data === 'string' && data.includes('Path:turn.end')) {
-                    clearTimeout(timeout);
-                    ws.close();
-
-                    if (audioChunks.length === 0) {
-                        console.error('[TTS] No se recibieron chunks de audio.');
-                        resolve(null);
-                        return;
-                    }
-
-                    const combined = Buffer.concat(audioChunks);
-                    const dir = fs.existsSync('/tmp') ? '/tmp' : process.cwd();
-                    const filePath = path.join(dir, `reply_${sessionId}_${Date.now()}.mp3`);
-                    fs.writeFileSync(filePath, combined);
-                    console.log(`[TTS] Audio Microsoft guardado (${combined.length} bytes): ${filePath}`);
-                    resolve(filePath);
-                }
-            });
-
-            ws.on('error', (err) => {
-                clearTimeout(timeout);
-                console.error('[TTS] Error WebSocket Microsoft:', err.message);
-                resolve(null);
-            });
-
-        } catch (error: any) {
-            console.error('[TTS] Excepción general:', error.message);
-            resolve(null);
+        if (!response.ok) {
+            console.error(`[TTS] Error de Google TTS (Status ${response.status})`);
+            return null;
         }
-    });
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        if (buffer.length < 100) {
+            console.error('[TTS] Audio recibido demasiado pequeño, descartando.');
+            return null;
+        }
+
+        const dir = fs.existsSync('/tmp') ? '/tmp' : process.cwd();
+        const filePath = path.join(dir, `reply_${sessionId}_${Date.now()}.mp3`);
+        fs.writeFileSync(filePath, buffer);
+
+        console.log(`[TTS] Audio guardado (${buffer.length} bytes): ${filePath}`);
+        return filePath;
+    } catch (error: any) {
+        console.error('[TTS] Excepción en Google TTS:', error.message);
+        return null;
+    }
+}
+
+/**
+ * Corta el texto en el último punto o coma antes del límite,
+ * para que la oración no quede cortada a la mitad.
+ */
+function smartTruncate(text: string, maxChars: number): string {
+    // Eliminar markdown antes de convertir a audio
+    const clean = text
+        .replace(/\*\*(.*?)\*\*/g, '$1')  // negrita
+        .replace(/\*(.*?)\*/g, '$1')       // cursiva
+        .replace(/`(.*?)`/g, '$1')         // código
+        .replace(/#+\s/g, '')              // títulos
+        .replace(/\[(.*?)\]\(.*?\)/g, '$1') // links
+        .trim();
+
+    if (clean.length <= maxChars) return clean;
+
+    // Intentar cortar en el último punto antes del límite
+    const cutPoint = clean.lastIndexOf('.', maxChars);
+    if (cutPoint > 50) return clean.substring(0, cutPoint + 1);
+
+    // Si no hay punto, cortar en el último espacio
+    const spacePoint = clean.lastIndexOf(' ', maxChars);
+    if (spacePoint > 50) return clean.substring(0, spacePoint) + '...';
+
+    return clean.substring(0, maxChars) + '...';
 }

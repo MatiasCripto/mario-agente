@@ -113,7 +113,9 @@ export function setupHandlers(bot: Bot) {
             await ctx.api.deleteMessage(ctx.chat!.id, statusMsg.message_id);
             await ctx.reply(`_Escuché:_ "${transcribedText}"`, { parse_mode: "Markdown" });
 
-            const response = await processUserMessage(sessionId, transcribedText);
+            // Para mensajes de voz pedimos una respuesta corta y hablable (max 2-3 oraciones)
+            const voicePrompt = `[MODO VOZ - respondé en máximo 2 oraciones cortas, sin markdown, de forma natural para ser leída en voz alta]\n${transcribedText}`;
+            const response = await processUserMessage(sessionId, voicePrompt);
             await sendAgentResponse(ctx, response, true); // Devolvemos voz si nos mandaron voz
 
         } catch (error: any) {
