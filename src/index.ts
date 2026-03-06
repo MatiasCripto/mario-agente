@@ -1,16 +1,18 @@
 import * as http from 'http';
-import * as dns from 'dns';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const dns = require('dns');
+
 import { bot } from './bot/index.js';
 import './db/index.js';
 import { connectToMcpServer } from './mcp/index.js';
 
-// HACK SUPREMO: Bypass de DNS para Telegram
-// Si el sistema no encuentra api.telegram.org, le damos la dirección IP a mano
+// HACK SUPREMO (Versión ESM): Bypass de DNS para Telegram
+// Usamos require para poder sobreescribir la propiedad lookup que en ESM es de solo lectura
 const originalLookup = dns.lookup;
-// @ts-ignore
 dns.lookup = (hostname: string, options: any, callback: any) => {
-    if (hostname === 'api.telegram.org') {
-        console.log('🔮 Bypass de DNS activado para Telegram...');
+    if (hostname.includes('api.telegram.org')) {
+        console.log('🔮 Bypass de DNS activado: Redirigiendo api.telegram.org -> 149.154.167.220');
         return originalLookup('149.154.167.220', options, callback);
     }
     return originalLookup(hostname, options, callback);
