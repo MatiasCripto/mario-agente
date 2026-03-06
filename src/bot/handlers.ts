@@ -10,17 +10,17 @@ async function sendAgentResponse(ctx: Context, response: string, shouldVoice: bo
     const sessionId = String(ctx.from?.id);
     console.log(`[Bot] Enviando respuesta (Voz: ${shouldVoice})`);
 
-    // Si queremos respuesta de voz (ElevenLabs)
-    if (shouldVoice && env.ELEVENLABS_API_KEY) {
+    // Si queremos respuesta de voz (Gratis con Google)
+    if (shouldVoice) {
         try {
-            console.log('[Bot] Solicitando TTS a ElevenLabs...');
+            console.log('[Bot] Solicitando TTS (Google)...');
             await ctx.replyWithChatAction('record_voice');
             const audioPath = await textToSpeech(response, sessionId);
 
             if (audioPath && fs.existsSync(audioPath)) {
                 console.log(`[Bot] Enviando audio desde: ${audioPath}`);
                 await ctx.replyWithVoice(new InputFile(audioPath));
-                fs.unlinkSync(audioPath); // Borramos el temporal
+                fs.unlinkSync(audioPath);
             } else {
                 console.warn('[Bot] TTS falló o no generó archivo.');
             }
