@@ -1,20 +1,21 @@
-FROM node:22-alpine
+FROM node:20-slim
 
-# Hugging Face Spaces requiere ejecutarse como un usuario no-root con ID 1000
-RUN adduser -D -u 1000 user
+# Hugging Face requiere un usuario con UID 1000
+RUN useradd -m -u 1000 user
 USER user
-ENV PATH="/home/user/.local/bin:$PATH"
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH
 
-WORKDIR /app
+WORKDIR $HOME/app
 
-# Archivos de dependencias con permisos para el usuario
-COPY --chown=user package*.json ./
+# Copiamos todo garantizando que el usuario 1000 sea el dueño
+COPY --chown=user . $HOME/app
+
+# Instalamos todo (incluyendo tsx que ahora está en dependencies)
 RUN npm install
 
-# Copiamos todo el código con permisos del usuario nuevo
-COPY --chown=user . .
-
-# Puerto mandatorio por Hugging Face
+# Puerto obligatorio para Hugging Face
 EXPOSE 7860
+ENV PORT=7860
 
 CMD ["npm", "run", "dev"]
