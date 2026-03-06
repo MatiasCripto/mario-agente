@@ -49,49 +49,57 @@ export function setupHandlers(bot: Bot) {
         }
     });
 
-    bot.on('message:voice', async (ctx: Context) => {
-        if (!ctx.from || !ctx.message?.voice) return;
+    // Manejador para mensajes de VOZ (los que se graban en el momento) y AUDIO (archivos subidos)
+    bot.on(['message:voice', 'message:audio'], async (ctx: Context) => {
+        console.log('[Bot] Recibido mensaje de audio/voz');
+        if (!ctx.from) return;
 
         const sessionId = String(ctx.from.id);
 
         try {
-            await ctx.replyWithChatAction('typing'); // O 'record_voice' si quisiéramos mandar audio, pero respondemos con texto
+            await ctx.replyWithChatAction('typing');
 
-            // 1. Conseguir info del archivo desde Telegram
+            // 1. Conseguir info del archivo
             const file = await ctx.getFile();
+            console.log('[Bot] Archivo obtenido de Telegram:', file.file_path);
+
             if (!file || !file.file_path) {
                 return ctx.reply("Che, Telegram no me dejó leer ese audio.");
             }
 
             // 2. Descargarlo
             const fileUrl = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+            console.log('[Bot] Descargando desde:', fileUrl.replace(env.TELEGRAM_BOT_TOKEN, '***'));
+
             const fileResponse = await fetch(fileUrl);
             const arrayBuffer = await fileResponse.arrayBuffer();
 
-            // 3. Guardarlo localmente por un segundito
-            const tempFilePath = path.join(process.cwd(), `temp_${sessionId}_${Date.now()}.ogg`);
+            // 3. Guardarlo en /tmp (es más seguro en la nube)
+            const tempFilePath = path.join('/tmp', `audio_${sessionId}_${Date.now()}.ogg`);
             fs.writeFileSync(tempFilePath, Buffer.from(arrayBuffer));
+            console.log('[Bot] Guardado temporal en:', tempFilePath);
 
             // 4. Transcribir el audio usando el modelo Whisper de Groq
             const transcribedText = await transcribeAudio(tempFilePath);
+            console.log('[Bot] Transcripción obtenida:', transcribedText);
 
-            // 5. Borrar el archivo porque ya no sirve
-            fs.unlinkSync(tempFilePath);
+            // 5. Borrar el archivo
+            if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
 
             if (!transcribedText || transcribedText.trim() === '') {
                 return ctx.reply("Che, no pude escuchar o entender nada de ese audio. ¿Podés repetirlo?");
             }
 
-            // (Opcional) Confirmarle al usuario lo que escuchamos para que vea que anduvo bien
+            // Avisamos qué escuchamos
             await ctx.reply(`_Escuché:_ "${transcribedText}"`, { parse_mode: "Markdown" });
 
-            // 6. Pasarle el texto transcrito al cerebro (exactamente igual que si hubiera escrito)
+            // 6. Pasarle el texto transcrito al cerebro
             const response = await processUserMessage(sessionId, transcribedText);
             await sendAgentResponse(ctx, response);
 
         } catch (error) {
             console.error('[Bot Handler] Error procesando audio:', error);
-            await ctx.reply('Che, se armó lío con el mensaje de voz. Mandamelo por texto por ahora.');
+            await ctx.reply('Che, se armó lío con el audio. Si es muy largo o raro, mandámelo por texto mejor.');
         }
     });
 }
