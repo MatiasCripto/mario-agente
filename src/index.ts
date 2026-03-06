@@ -6,47 +6,55 @@ import { connectToMcpServer } from './mcp/index.js';
 async function bootstrap() {
     console.log('🚀 Iniciando Mario...');
 
-    // Verificación de salud del Token antes de arrancar
-    try {
-        const me = await bot.api.getMe();
-        console.log(`✅ Conexión con Telegram exitosa. Soy: @${me.username} (ID: ${me.id})`);
-    } catch (err: any) {
-        console.error('❌ ERROR CRÍTICO: No se pudo conectar con Telegram. ¿El Token es válido?');
-        console.error('Detalle del error:', err.message);
-        if (err.message?.includes('409')) {
-            console.error('🔥 CONFLICTO: El bot ya está corriendo en otro lado. ¡Cerrá todas las otras consolas!');
-        }
-        process.exit(1);
-    }
-
-    // El MCP SQLite fue removido ya que ahora el agente utiliza Firebase Firestore
-    // Podés agregar otros servidores MCP aquí usando `connectToMcpServer`
-
-    // Levantamos un mini servidor web para que la Nube (Hugging Face / Render) no "duerma" a Mario
+    // 1. Levantamos el servidor web AL TOQUE para que la nube no nos mate por "unhealthy"
     const server = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('Mario Agent esta vivo y prestando atencion en Telegram\n');
     });
-    const PORT = process.env.PORT || 7860;
-    server.listen(PORT, () => {
+    const PORT = Number(process.env.PORT) || 7860;
+    server.listen(PORT, '0.0.0.0', () => {
         console.log(`🌍 Corazón web latiendo en el puerto ${PORT}...`);
     });
 
-    console.log('📡 Iniciando polling de mensajes...');
+    // 2. Intentamos conectar con Telegram con reintentos (paciencia para la nube)
+    let connected = false;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (!connected && attempts < maxAttempts) {
+        attempts++;
+        try {
+            console.log(`📡 Intentando conectar con Telegram (Intento ${attempts}/${maxAttempts})...`);
+            const me = await bot.api.getMe();
+            console.log(`✅ ¡Conexión exitosa! Soy: @${me.username}`);
+            connected = true;
+        } catch (err: any) {
+            console.error(`❌ Intento ${attempts} falló: ${err.message}`);
+            if (err.message?.includes('409')) {
+                console.error('🔥 CONFLICTO: El bot ya está corriendo en otro lado. ¡Cerrá todo!');
+                process.exit(1);
+            }
+            if (attempts < maxAttempts) {
+                console.log('⏳ Esperando 5 segundos para reintentar...');
+                await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+        }
+    }
+
+    if (!connected) {
+        console.error('💀 No se pudo conectar a Telegram después de varios intentos. Muriendo...');
+        process.exit(1);
+    }
+
+    console.log('✨ Iniciando Mario en modo polling...');
     bot.start({
         onStart: (botInfo) => {
-            console.log(`✨ Mario escuchando oficialmente en @${botInfo.username}`);
+            console.log(`🎮 Mario escuchando oficialmente en @${botInfo.username}`);
         }
     });
 
-    process.once('SIGINT', () => {
-        console.log('Apagando bot...');
-        bot.stop();
-    });
-    process.once('SIGTERM', () => {
-        console.log('Apagando bot...');
-        bot.stop();
-    });
+    process.once('SIGINT', () => { bot.stop(); process.exit(0); });
+    process.once('SIGTERM', () => { bot.stop(); process.exit(0); });
 }
 
 bootstrap().catch(console.error);
