@@ -6,9 +6,7 @@ import { setupHandlers } from './handlers.js';
 export const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
 
 bot.use(async (ctx, next) => {
-    if (ctx.from && ctx.message?.text) {
-        console.log(`[Telegram] Mensaje entrante de ${ctx.from.id}`);
-    }
+    console.log(`[Telegram] Evento entrante de ${ctx.from?.id} (@${ctx.from?.username}) - Tipo: ${ctx.message ? Object.keys(ctx.message).join(',') : 'desconocido'}`);
     await next();
 });
 
