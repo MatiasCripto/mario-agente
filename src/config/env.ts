@@ -10,7 +10,7 @@ const envSchema = z.object({
     OPENROUTER_API_KEY: z.string().optional(),
     OPENROUTER_MODEL: z.string().default('openrouter/free'),
     DB_PATH: z.string().default('./memory.db'),
-    GOOGLE_APPLICATION_CREDENTIALS: z.string().min(1, 'La ruta al service-account.json es obligatoria'),
+    GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
 });
 
 const _env = envSchema.safeParse(process.env);
