@@ -1,12 +1,29 @@
-import { Bot, Context } from 'grammy';
+import { Bot, Context, InputFile } from 'grammy';
 import { processUserMessage } from '../agent/loop.js';
 import { transcribeAudio } from '../agent/llm.js';
+import { textToSpeech } from '../agent/tts.js';
 import { env } from '../config/env.js';
 import fs from 'fs';
 import path from 'path';
 
-async function sendAgentResponse(ctx: Context, response: string) {
-    // Si la respuesta contiene una URL de imagen o video de las que generamos, la mandamos correctamente
+async function sendAgentResponse(ctx: Context, response: string, shouldVoice: boolean = false) {
+    const sessionId = String(ctx.from?.id);
+
+    // Si queremos respuesta de voz (ElevenLabs)
+    if (shouldVoice && env.ELEVENLABS_API_KEY) {
+        try {
+            await ctx.replyWithChatAction('record_voice');
+            const audioPath = await textToSpeech(response, sessionId);
+            if (audioPath && fs.existsSync(audioPath)) {
+                await ctx.replyWithVoice(new InputFile(audioPath));
+                fs.unlinkSync(audioPath); // Borramos el temporal
+            }
+        } catch (err) {
+            console.error('[Bot] Error enviando respuesta de voz:', err);
+        }
+    }
+
+    // Respuesta de texto / media original
     if (response.includes('https://image.pollinations.ai')) {
         const urlMatch = response.match(/https:\/\/image\.pollinations\.ai[^\s]*/);
         if (urlMatch) {
@@ -91,7 +108,7 @@ export function setupHandlers(bot: Bot) {
             await ctx.reply(`_Escuché:_ "${transcribedText}"`, { parse_mode: "Markdown" });
 
             const response = await processUserMessage(sessionId, transcribedText);
-            await sendAgentResponse(ctx, response);
+            await sendAgentResponse(ctx, response, true); // Devolvemos voz si nos mandaron voz
 
         } catch (error: any) {
             console.error('[Bot Handler] Error audio:', error);
