@@ -12,60 +12,68 @@ if (dns.setDefaultResultOrder) {
 async function bootstrap() {
     console.log('🚀 Iniciando Mario...');
 
-    // Debug de variables (sin mostrar el token entero por seguridad)
+    // Debug de variables
     const token = process.env.TELEGRAM_BOT_TOKEN || '';
     if (token) {
         console.log(`📡 Token detectado: ${token.substring(0, 5)}...${token.substring(token.length - 4)} (Largo: ${token.length})`);
     } else {
-        console.error('❌ ERROR: No se detecto ningún Token en process.env');
+        console.error('❌ ERROR: No se detectó ningún Token.');
     }
 
-    console.log(`👤 Usuarios permitidos: ${process.env.TELEGRAM_ALLOWED_USER_IDS}`);
-
-    // 1. Levantamos el servidor web AL TOQUE para que la nube no nos mate por "unhealthy"
+    // 1. Servidor web inmediato para evitar el "Sleeping" de la nube
     const server = http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
-        res.end('Mario Agent esta vivo y prestando atencion en Telegram\n');
+        res.end('Mario Agent activo\n');
     });
     const PORT = Number(process.env.PORT) || 7860;
     server.listen(PORT, '0.0.0.0', () => {
         console.log(`🌍 Corazón web latiendo en el puerto ${PORT}...`);
     });
 
-    // 2. Intentamos conectar con Telegram con reintentos (paciencia para la nube)
+    // 2. DIAGNÓSTICO DE RED: Verificamos DNS e Internet básico
+    console.log('🔍 Iniciando diagnóstico de red...');
+
+    dns.lookup('api.telegram.org', (err, address) => {
+        console.log(`🌐 DNS api.telegram.org -> ${address || 'FALLIDO'} (${err ? err.message : 'OK'})`);
+    });
+
+    // 3. Reintentos de conexión con backoff
     let connected = false;
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 15;
 
     while (!connected && attempts < maxAttempts) {
         attempts++;
         try {
-            console.log(`📡 Intentando conectar con Telegram (Intento ${attempts}/${maxAttempts})...`);
+            console.log(`📡 Conectando a Telegram (Intento ${attempts}/${maxAttempts})...`);
             const me = await bot.api.getMe();
-            console.log(`✅ ¡Conexión exitosa! Soy: @${me.username}`);
+            console.log(`✅ ¡ÉXITO! Bot conectado como @${me.username}`);
             connected = true;
         } catch (err: any) {
-            console.error(`❌ Intento ${attempts} falló: ${err.message}`);
+            console.error(`❌ Fallo intento ${attempts}: ${err.message}`);
+
             if (err.message?.includes('409')) {
-                console.error('🔥 CONFLICTO: El bot ya está corriendo en otro lado. ¡Cerrá todo!');
+                console.error('🔥 CONFLICTO: Otro bot está usando este token.');
                 process.exit(1);
             }
+
             if (attempts < maxAttempts) {
-                console.log('⏳ Esperando 5 segundos para reintentar...');
-                await new Promise(resolve => setTimeout(resolve, 5000));
+                const waitTime = Math.min(2000 * attempts, 10000); // 2s, 4s, 6s... máx 10s
+                console.log(`⏳ Reintentando en ${waitTime / 1000}s...`);
+                await new Promise(r => setTimeout(r, waitTime));
             }
         }
     }
 
     if (!connected) {
-        console.error('💀 No se pudo conectar a Telegram después de varios intentos. Muriendo...');
+        console.error('💀 Game Over: No hay conexión con Telegram.');
         process.exit(1);
     }
 
-    console.log('✨ Iniciando Mario en modo polling...');
+    console.log('🎮 Mario escuchando mensajes...');
     bot.start({
         onStart: (botInfo) => {
-            console.log(`🎮 Mario escuchando oficialmente en @${botInfo.username}`);
+            console.log(`✨ Sesión oficialmente abierta para @${botInfo.username}`);
         }
     });
 
