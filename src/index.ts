@@ -1,10 +1,26 @@
 import * as http from 'http';
+import * as dns from 'dns';
 import { bot } from './bot/index.js';
 import './db/index.js';
 import { connectToMcpServer } from './mcp/index.js';
 
+// FORZAR IPv4: Esto soluciona el "Network request failed" en muchos servidores nube
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first');
+}
+
 async function bootstrap() {
     console.log('🚀 Iniciando Mario...');
+
+    // Debug de variables (sin mostrar el token entero por seguridad)
+    const token = process.env.TELEGRAM_BOT_TOKEN || '';
+    if (token) {
+        console.log(`📡 Token detectado: ${token.substring(0, 5)}...${token.substring(token.length - 4)} (Largo: ${token.length})`);
+    } else {
+        console.error('❌ ERROR: No se detecto ningún Token en process.env');
+    }
+
+    console.log(`👤 Usuarios permitidos: ${process.env.TELEGRAM_ALLOWED_USER_IDS}`);
 
     // 1. Levantamos el servidor web AL TOQUE para que la nube no nos mate por "unhealthy"
     const server = http.createServer((req, res) => {
